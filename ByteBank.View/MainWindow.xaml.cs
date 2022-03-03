@@ -37,8 +37,9 @@ namespace ByteBank.View
             BtnProcessar.IsEnabled = false;
             var contas = r_Repositorio.GetContaClientes();
 
-             
-            AtualizarView(new List<string>(), TimeSpan.Zero);
+            PgsProgresso.Maximum = contas.Count();
+
+            LimparView();
 
             var inicio = DateTime.Now;
 
@@ -49,28 +50,36 @@ namespace ByteBank.View
         }
 
 
-        private Task<List<string>> ConsolidarContas(IEnumerable<ContaCliente> contas)
+        private async Task<string[]> ConsolidarContas(IEnumerable<ContaCliente> contas)
         {
-            var resultado = new List<string>();
-
+            var taskSchedulerGui = TaskScheduler.FromCurrentSynchronizationContext();
             var tasks = contas.Select(conta =>
-            {
-                return Task.Factory.StartNew(() =>
+                Task.Factory.StartNew(() =>
                 {
-                    var contaResultado = r_Servico.ConsolidarMovimentacao(conta);
-                    resultado.Add(contaResultado);
-                });
-            });
-            return Task.WhenAll(tasks).ContinueWith(t =>
-            {
-                return resultado;
-            });
-            
+                    var resultadoConsolidacao = r_Servico.ConsolidarMovimentacao(conta);
+
+                    Task.Factory.StartNew(
+                        () => PgsProgresso.Value++,
+                        CancellationToken.None,
+                        TaskCreationOptions.None,
+                        taskSchedulerGui
+                        );
+                    return resultadoConsolidacao;
+                })
+            );
+            return await Task.WhenAll(tasks);
         }
-        private void AtualizarView(List<String> result, TimeSpan elapsedTime)
+
+        private void LimparView()
+        {
+            LstResultados.ItemsSource = null;
+            TxtTempo.Text = null;
+            PgsProgresso.Value = 0;
+        }
+        private void AtualizarView(IEnumerable<String> result, TimeSpan elapsedTime)
         {
             var tempoDecorrido = $"{ elapsedTime.Seconds }.{ elapsedTime.Milliseconds} segundos!";
-            var mensagem = $"Processamento de {result.Count} clientes em {tempoDecorrido}";
+            var mensagem = $"Processamento de {result.Count()} clientes em {tempoDecorrido}";
 
             LstResultados.ItemsSource = result;
             TxtTempo.Text = mensagem;
