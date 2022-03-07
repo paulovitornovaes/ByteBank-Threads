@@ -1,4 +1,5 @@
 ﻿using ByteBank.Core.Model;
+using ByteBank.View.Properties;
 using ByteBank.Core.Repository;
 using ByteBank.Core.Service;
 using System;
@@ -16,6 +17,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
+using ByteBank.View.Utils;
 
 namespace ByteBank.View
 {
@@ -23,6 +25,8 @@ namespace ByteBank.View
     {
         private readonly ContaClienteRepository r_Repositorio;
         private readonly ContaClienteService r_Servico;
+        private CancellationToken _cts;
+
 
         public MainWindow()
         {
@@ -31,7 +35,6 @@ namespace ByteBank.View
             r_Repositorio = new ContaClienteRepository();
             r_Servico = new ContaClienteService();
         }
-
         private async void BtnProcessar_Click(object sender, RoutedEventArgs e)
         {
             BtnProcessar.IsEnabled = false;
@@ -43,27 +46,31 @@ namespace ByteBank.View
 
             var inicio = DateTime.Now;
 
-            var resultado = await ConsolidarContas(contas);
+            BtnCancelar.IsEnabled = true;
+
+            var progress = new Progress<String>(str =>
+                PgsProgresso.Value++
+            );
+
+            var resultado = await ConsolidarContas(contas, progress);
             var fim = DateTime.Now;
             AtualizarView(resultado, fim - inicio);
             BtnProcessar.IsEnabled = true;
         }
-
-
-        private async Task<string[]> ConsolidarContas(IEnumerable<ContaCliente> contas)
+        private void BtnCancelar_Click(object sender, RoutedEventArgs e)
         {
-            var taskSchedulerGui = TaskScheduler.FromCurrentSynchronizationContext();
+            BtnCancelar.IsEnabled = false;
+        }
+        private async Task<string[]> ConsolidarContas(IEnumerable<ContaCliente> contas, IProgress<string> reportadorDeProgresso)
+        {
+
             var tasks = contas.Select(conta =>
                 Task.Factory.StartNew(() =>
                 {
                     var resultadoConsolidacao = r_Servico.ConsolidarMovimentacao(conta);
 
-                    Task.Factory.StartNew(
-                        () => PgsProgresso.Value++,
-                        CancellationToken.None,
-                        TaskCreationOptions.None,
-                        taskSchedulerGui
-                        );
+                    reportadorDeProgresso.Report(resultadoConsolidacao);
+
                     return resultadoConsolidacao;
                 })
             );
@@ -84,5 +91,7 @@ namespace ByteBank.View
             LstResultados.ItemsSource = result;
             TxtTempo.Text = mensagem;
         }
+
+
     }
 }
